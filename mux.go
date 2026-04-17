@@ -32,9 +32,6 @@ import (
 
 // Config is used to tune the Smux session
 type Config struct {
-	// SMUX Protocol version, support 1,2
-	Version int
-
 	// Disabled keepalive
 	KeepAliveDisabled bool
 
@@ -61,7 +58,6 @@ type Config struct {
 // DefaultConfig is used to return a default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		Version:           1,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      32768,
@@ -72,9 +68,6 @@ func DefaultConfig() *Config {
 
 // VerifyConfig is used to verify the sanity of configuration
 func VerifyConfig(config *Config) error {
-	if !(config.Version == 1 || config.Version == 2) {
-		return errors.New("unsupported protocol version")
-	}
 	if !config.KeepAliveDisabled {
 		if config.KeepAliveInterval == 0 {
 			return errors.New("keep-alive interval must be positive")

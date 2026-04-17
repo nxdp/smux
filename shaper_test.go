@@ -103,7 +103,7 @@ func TestShaperQueueFairness(t *testing.T) {
 				default:
 				}
 				sq.Push(writeRequest{
-					frame: Frame{sid: uint32(sid)},
+					frame: Frame{sid: uint16(sid)},
 					seq:   seq,
 				})
 				seq++
@@ -207,7 +207,7 @@ func TestShaperQueue_FastWriteSlowRead(t *testing.T) {
 				}
 
 				sq.Push(writeRequest{
-					frame: Frame{sid: uint32(sid)},
+					frame: Frame{sid: uint16(sid)},
 					seq:   seq,
 				})
 				seq++
@@ -434,8 +434,8 @@ func TestShaperIsEmpty(t *testing.T) {
 		t.Fatal("ShaperQueue should be empty")
 	}
 	sq.Push(writeRequest{
-frame: newFrame(1, cmdPSH, 1),
-})
+		frame: newFrame(cmdPSH, 1),
+	})
 	if sq.IsEmpty() {
 		t.Fatal("ShaperQueue should not be empty")
 	}

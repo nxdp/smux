@@ -115,7 +115,6 @@ func setupServerV2(tb testing.TB) (addr string, stopfunc func(), client net.Conn
 
 func handleConnectionV2(conn net.Conn) {
 	config := DefaultConfig()
-	config.Version = 2
 	session, _ := Server(conn, config)
 	for {
 		if stream, err := session.AcceptStream(); err == nil {
@@ -238,7 +237,6 @@ func TestWriteTo(t *testing.T) {
 
 func TestWriteToV2(t *testing.T) {
 	config := DefaultConfig()
-	config.Version = 2
 	const N = 1 << 20
 	// server
 	ln, err := net.Listen("tcp", "localhost:0")
@@ -422,7 +420,6 @@ func TestParallel(t *testing.T) {
 
 func TestParallelV2(t *testing.T) {
 	config := DefaultConfig()
-	config.Version = 2
 	_, stop, cli, err := setupServerV2(t)
 	if err != nil {
 		t.Fatal(err)
@@ -807,7 +804,7 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, cmdSYN, 1000)
+		f := newFrame(cmdSYN, 1000)
 		session.writeControlFrame(f)
 	}
 	cli.Close()
@@ -820,7 +817,7 @@ func TestRandomFrame(t *testing.T) {
 	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdNOP}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, allcmds[rand.Int()%len(allcmds)], rand.Uint32())
+		f := newFrame(allcmds[rand.Int()%len(allcmds)], uint16(rand.Uint32()))
 		session.writeControlFrame(f)
 	}
 	cli.Close()
@@ -832,20 +829,7 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
-		session.writeControlFrame(f)
-	}
-	cli.Close()
-
-	// random version
-	cli, err = net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, _ = Client(cli, nil)
-	for i := 0; i < 100; i++ {
-		f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
-		f.ver = byte(rand.Uint32())
+		f := newFrame(byte(rand.Uint32()), uint16(rand.Uint32()))
 		session.writeControlFrame(f)
 	}
 	cli.Close()
@@ -857,16 +841,15 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(cli, nil)
 
-	f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
+	f := newFrame(byte(rand.Uint32()), uint16(rand.Uint32()))
 	rnd := make([]byte, rand.Uint32()%1024)
 	io.ReadFull(crand.Reader, rnd)
 	f.data = rnd
 
 	buf := make([]byte, headerSize+len(f.data))
-	buf[0] = f.ver
-	buf[1] = f.cmd
-	binary.LittleEndian.PutUint16(buf[2:], uint16(len(rnd)+1)) /// incorrect size
-	binary.LittleEndian.PutUint32(buf[4:], f.sid)
+	buf[0] = f.cmd
+	binary.LittleEndian.PutUint16(buf[1:], uint16(len(rnd)+1)) /// incorrect size
+	binary.LittleEndian.PutUint16(buf[3:], f.sid)
 	copy(buf[headerSize:], f.data)
 
 	session.conn.Write(buf)
@@ -881,7 +864,7 @@ func TestRandomFrame(t *testing.T) {
 	//close first
 	session.Close()
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
+		f := newFrame(byte(rand.Uint32()), uint16(rand.Uint32()))
 		session.writeControlFrame(f)
 	}
 }
@@ -910,7 +893,7 @@ func TestWriteFrameInternal(t *testing.T) {
 	//close first
 	session.Close()
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
+		f := newFrame(byte(rand.Uint32()), uint16(rand.Uint32()))
 
 		timer := time.NewTimer(session.config.KeepAliveTimeout)
 		defer timer.Stop()
@@ -926,7 +909,7 @@ func TestWriteFrameInternal(t *testing.T) {
 	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdNOP}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
-		f := newFrame(1, allcmds[rand.Int()%len(allcmds)], rand.Uint32())
+		f := newFrame(allcmds[rand.Int()%len(allcmds)], uint16(rand.Uint32()))
 
 		timer := time.NewTimer(session.config.KeepAliveTimeout)
 		defer timer.Stop()
@@ -937,7 +920,7 @@ func TestWriteFrameInternal(t *testing.T) {
 	{
 		c := make(chan time.Time)
 		close(c)
-		f := newFrame(1, allcmds[rand.Int()%len(allcmds)], rand.Uint32())
+		f := newFrame(allcmds[rand.Int()%len(allcmds)], uint16(rand.Uint32()))
 		_, err := session.writeFrameInternal(f, c, CLSDATA)
 		if !strings.Contains(err.Error(), "timeout") {
 			t.Fatal("write frame with deadline failed", err)
@@ -954,7 +937,7 @@ func TestWriteFrameInternal(t *testing.T) {
 		config.KeepAliveInterval = time.Second
 		config.KeepAliveTimeout = 2 * time.Second
 		session, _ = Client(&blockWriteConn{cli}, config)
-		f := newFrame(1, byte(rand.Uint32()), rand.Uint32())
+		f := newFrame(byte(rand.Uint32()), uint16(rand.Uint32()))
 		c := make(chan time.Time)
 		go func() {
 			//die first, deadline second, better for coverage
@@ -1036,7 +1019,6 @@ func Test8GBTransferV1(t *testing.T) {
 // This test validates large data transfer (8GB) over a single stream with random data
 func Test8GBTransferV2(t *testing.T) {
 	config := DefaultConfig()
-	config.Version = 2
 	_, stop, cli, err := setupServerV2(t)
 	if err != nil {
 		t.Fatal(err)
@@ -1067,7 +1049,6 @@ func TestRandomLengthRandomDataTransferV1(t *testing.T) {
 
 func TestRandomLengthRandomDataTransferV2(t *testing.T) {
 	config := DefaultConfig()
-	config.Version = 2
 	_, stop, cli, err := setupServerV2(t)
 	if err != nil {
 		t.Fatal(err)
@@ -1279,8 +1260,8 @@ func bench(b *testing.B, rd io.Reader, wr io.Writer) {
 }
 
 func TestFrameString(t *testing.T) {
-	h := rawHeader{1, cmdSYN, 100, 0, 1, 0, 0, 0}
-	expected := "Version:1 Cmd:0 StreamID:1 Length:100"
+	h := rawHeader{cmdSYN, 100, 0, 1, 0}
+	expected := "Cmd:0 StreamID:1 Length:100"
 	if h.String() != expected {
 		t.Fatalf("expected %s, got %s", expected, h.String())
 	}

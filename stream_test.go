@@ -363,7 +363,7 @@ func TestHalfCloseAutoCleanup(t *testing.T) {
 	}
 }
 
-// TestHalfCloseV2 tests half-close with protocol version 2
+// TestHalfCloseV2 exercises half-close on the always-on flow-control path.
 func TestHalfCloseV2(t *testing.T) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -372,7 +372,6 @@ func TestHalfCloseV2(t *testing.T) {
 	defer ln.Close()
 
 	config := DefaultConfig()
-	config.Version = 2
 
 	serverSessionCh := make(chan *Session, 1)
 	go func() {

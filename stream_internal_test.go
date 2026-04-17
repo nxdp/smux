@@ -12,7 +12,7 @@ func newUnitTestStream() *stream {
 	cfg := DefaultConfig()
 	sess := &Session{
 		config:             cfg,
-		streams:            make(map[uint32]*stream),
+		streams:            make(map[uint16]*stream),
 		chSocketReadError:  make(chan struct{}),
 		chSocketWriteError: make(chan struct{}),
 		chProtoError:       make(chan struct{}),
@@ -122,7 +122,7 @@ func TestSendWindowUpdateTimeout(t *testing.T) {
 	cfg := DefaultConfig()
 	sess := &Session{
 		config:             cfg,
-		streams:            make(map[uint32]*stream),
+		streams:            make(map[uint16]*stream),
 		chSocketReadError:  make(chan struct{}),
 		chSocketWriteError: make(chan struct{}),
 		chProtoError:       make(chan struct{}),
@@ -158,10 +158,9 @@ func TestNewBufferRingMinCapacity(t *testing.T) {
 
 func newUnitTestStreamV2() *stream {
 	cfg := DefaultConfig()
-	cfg.Version = 2
 	sess := &Session{
 		config:             cfg,
-		streams:            make(map[uint32]*stream),
+		streams:            make(map[uint16]*stream),
 		chSocketReadError:  make(chan struct{}),
 		chSocketWriteError: make(chan struct{}),
 		chProtoError:       make(chan struct{}),

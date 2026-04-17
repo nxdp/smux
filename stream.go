@@ -38,7 +38,7 @@ type Stream struct {
 
 // Stream implements net.Conn
 type stream struct {
-	id   uint32 // Stream identifier
+	id   uint16 // Stream identifier
 	sess *Session
 
 	bufferRing bufferRing // ring buffer for ordered incoming data
@@ -176,7 +176,7 @@ func (r *bufferRing) consumeFront(b []byte) (n int, recycled *[]byte) {
 }
 
 // newStream initializes and returns a new Stream.
-func newStream(id uint32, frameSize int, sess *Session) *stream {
+func newStream(id uint16, frameSize int, sess *Session) *stream {
 	s := new(stream)
 	s.id = id
 	s.chReaderWakeup = make(chan struct{}, 1)
@@ -196,13 +196,13 @@ func newStream(id uint32, frameSize int, sess *Session) *stream {
 }
 
 // ID returns the stream's unique identifier.
-func (s *stream) ID() uint32 {
+func (s *stream) ID() uint16 {
 	return s.id
 }
 
 // Read reads data from the stream into the provided buffer.
 func (s *stream) Read(b []byte) (n int, err error) {
-	if s.sess.config.Version == 2 {
+	if true { // flow control always enabled
 		for {
 			n, err = s.tryReadV2(b)
 			if err != ErrWouldBlock {
@@ -314,12 +314,7 @@ func (s *stream) tryReadV2(b []byte) (n int, err error) {
 // If the underlying stream is a v2 stream, it will send window update to peer when necessary.
 // If the underlying stream is a v1 stream, it will not send window update to peer.
 func (s *stream) WriteTo(w io.Writer) (n int64, err error) {
-	switch s.sess.config.Version {
-	case 2:
-		return s.writeToV2(w)
-	default:
-		return s.writeToV1(w)
-	}
+	return s.writeToV2(w) // flow control always enabled
 }
 
 // check comments in WriteTo
@@ -418,7 +413,7 @@ func (s *stream) sendWindowUpdate(consumed uint32) error {
 		deadline = timer.C
 	}
 
-	frame := newFrame(byte(s.sess.config.Version), cmdUPD, s.id)
+	frame := newFrame(cmdUPD, s.id)
 	var hdr updHeader
 	binary.LittleEndian.PutUint32(hdr[:], consumed)
 	binary.LittleEndian.PutUint32(hdr[4:], uint32(s.sess.config.MaxStreamBuffer))
@@ -478,12 +473,7 @@ func (s *stream) checkWriteClosed() error {
 // Note that the behavior when multiple goroutines write concurrently is not deterministic,
 // frames may interleave in random way.
 func (s *stream) Write(b []byte) (n int, err error) {
-	switch s.sess.config.Version {
-	case 2:
-		return s.writeV2(b)
-	default:
-		return s.writeV1(b)
-	}
+	return s.writeV2(b) // flow control always enabled
 }
 
 // writeV1 writes data to the stream for version 1 streams.
@@ -508,7 +498,7 @@ func (s *stream) writeV1(b []byte) (n int, err error) {
 
 	// frame split and transmit
 	sent := 0
-	frame := newFrame(byte(s.sess.config.Version), cmdPSH, s.id)
+	frame := newFrame(cmdPSH, s.id)
 	for len(b) > 0 {
 		size := len(b)
 		if size > s.frameSize {
@@ -543,7 +533,7 @@ func (s *stream) writeV2(b []byte) (n int, err error) {
 
 	// frame split and transmit process
 	sent := 0
-	frame := newFrame(byte(s.sess.config.Version), cmdPSH, s.id)
+	frame := newFrame(cmdPSH, s.id)
 
 	var deadlineTimer *time.Timer
 	defer func() {
@@ -657,7 +647,7 @@ func (s *stream) CloseWrite() error {
 	}
 
 	// send FIN to notify the peer that we are done writing
-	f := newFrame(byte(s.sess.config.Version), cmdFIN, s.id)
+	f := newFrame(cmdFIN, s.id)
 
 	timer := time.NewTimer(openCloseTimeout)
 	defer timer.Stop()
@@ -686,7 +676,7 @@ func (s *stream) Close() error {
 	})
 
 	// send FIN in order
-	f := newFrame(byte(s.sess.config.Version), cmdFIN, s.id)
+	f := newFrame(cmdFIN, s.id)
 
 	timer := time.NewTimer(openCloseTimeout)
 	defer timer.Stop()

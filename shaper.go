@@ -66,7 +66,7 @@ func (h *shaperHeap) Pop() any {
 // shaperQueue manages multiple streams of writeRequests using a round-robin scheduling algorithm.
 type shaperQueue struct {
 	count   int64 // atomic counter for fast Len() and IsEmpty()
-	streams map[uint32]*shaperHeap
+	streams map[uint16]*shaperHeap
 	rrList  *list.List    // list of sid (RR queue)
 	next    *list.Element // next node to pop
 	mu      sync.Mutex
@@ -82,7 +82,7 @@ var shaperHeapPool = sync.Pool{
 
 func NewShaperQueue() *shaperQueue {
 	return &shaperQueue{
-		streams: make(map[uint32]*shaperHeap),
+		streams: make(map[uint16]*shaperHeap),
 		rrList:  list.New(),
 	}
 }
@@ -127,7 +127,7 @@ func (sq *shaperQueue) Pop() (req writeRequest, ok bool) {
 
 	// loop through all streams in a round-robin manner
 	for {
-		sid := current.Value.(uint32)
+		sid := current.Value.(uint16)
 		h := sq.streams[sid]
 
 		if h.Len() > 0 {

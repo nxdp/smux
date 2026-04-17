@@ -95,13 +95,13 @@ type Session struct {
 
 	config           *Config
 	goAway           int32  // flag id exhausted
-	nextStreamID     uint32 // next stream identifier
+	nextStreamID     uint16 // next stream identifier
 	nextStreamIDLock sync.Mutex
 
 	bucket       int32         // token bucket
 	bucketNotify chan struct{} // used for waiting for tokens
 
-	streams    map[uint32]*stream // all streams in this session
+	streams    map[uint16]*stream // all streams in this session
 	streamLock sync.Mutex         // locks streams
 
 	die     chan struct{} // flag session has died
@@ -138,7 +138,7 @@ func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
 	s.die = make(chan struct{})
 	s.conn = conn
 	s.config = config
-	s.streams = make(map[uint32]*stream)
+	s.streams = make(map[uint16]*stream)
 	s.chAccepts = make(chan *stream, defaultAcceptBacklog)
 	s.bucket = int32(config.MaxReceiveBuffer)
 	s.bucketNotify = make(chan struct{}, 1)
@@ -192,7 +192,7 @@ func (s *Session) OpenStream() (*Stream, error) {
 
 	stream := newStream(sid, s.config.MaxFrameSize, s)
 
-	if _, err := s.writeControlFrame(newFrame(byte(s.config.Version), cmdSYN, sid)); err != nil {
+	if _, err := s.writeControlFrame(newFrame(cmdSYN, sid)); err != nil {
 		return nil, err
 	}
 
@@ -355,7 +355,7 @@ func (s *Session) RemoteAddr() net.Addr {
 }
 
 // notify the session that a stream has closed
-func (s *Session) streamClosed(sid uint32) {
+func (s *Session) streamClosed(sid uint16) {
 	s.streamLock.Lock()
 	defer s.streamLock.Unlock()
 
@@ -408,12 +408,6 @@ func (s *Session) recvLoop() {
 
 		// Mark the session as active
 		atomic.StoreInt32(&s.sessionIsActive, 1)
-
-		// validate protocol version
-		if hdr.Version() != byte(s.config.Version) {
-			s.notifyProtoError(ErrInvalidProtocol)
-			return
-		}
 
 		// handle different command types
 		sid := hdr.StreamID()
@@ -485,11 +479,7 @@ func (s *Session) recvLoop() {
 			}
 			s.streamLock.Unlock()
 
-		case cmdUPD: // a window update signal (v2 only)
-			if s.config.Version != 2 {
-				s.notifyProtoError(ErrInvalidProtocol)
-				return
-			}
+		case cmdUPD: // a window update signal
 			if hdr.Length() != szCmdUPD {
 				s.notifyProtoError(ErrInvalidProtocol)
 				return
@@ -525,7 +515,7 @@ func (s *Session) keepalive() {
 	for {
 		select {
 		case <-tickerPing.C:
-			s.writeFrameInternal(newFrame(byte(s.config.Version), cmdNOP, 0), tickerPing.C, CLSCTRL)
+			s.writeFrameInternal(newFrame(cmdNOP, 0), tickerPing.C, CLSCTRL)
 			s.notifyBucket() // force a wakeup signal to the recvLoop
 		case <-tickerTimeout.C:
 			if !atomic.CompareAndSwapInt32(&s.sessionIsActive, 1, 0) {
@@ -624,10 +614,9 @@ EVENT_LOOP:
 					goto EVENT_LOOP
 				}
 
-				buf[0] = request.frame.ver
-				buf[1] = request.frame.cmd
-				binary.LittleEndian.PutUint16(buf[2:], uint16(len(request.frame.data)))
-				binary.LittleEndian.PutUint32(buf[4:], request.frame.sid)
+				buf[0] = request.frame.cmd
+				binary.LittleEndian.PutUint16(buf[1:], uint16(len(request.frame.data)))
+				binary.LittleEndian.PutUint16(buf[3:], request.frame.sid)
 
 				// support for scatter-gather I/O
 				if len(vec) > 0 {
